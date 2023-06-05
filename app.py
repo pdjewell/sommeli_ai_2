@@ -132,41 +132,43 @@ def filter_df_recs(df: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
     st.title("🍷 Sommeli-AI")
-    col1, col2 = st.columns([0.6,0.4], gap="medium")
- 
+
     # Read in data 
     ds_path = "./data/wine_ds.hf"
     df = read_data(ds_path=None)
 
-    with col2:
-        st.header("Explore the world of wine  🌍")
-        wine_plot = st.radio('Select plot type:', ['2D','3D'],
-                            label_visibility = "hidden",
-                            horizontal=True)
-        st.text("Click the legend categories to filter")
+    maincol, acol = st.columns([0.999,0.001]) 
+    with maincol: 
+        col1, col2 = st.columns([0.65,0.35], gap="medium")
+        with col2:
+            st.header("Explore the world of wine  🌍")
+            wine_plot = st.radio('Select plot type:', ['2D','3D'],
+                                label_visibility = "hidden",
+                                horizontal=True)
+            st.text("Click the legend categories to filter")
 
-        # Load the HTML file
-        with open('./images/px_2d.html', 'r') as file:
-            plot2d_html = file.read()
-        # Load the HTML file
-        with open('./images/px_3d.html', 'r') as file:
-            plot3d_html = file.read()
-        # Display the HTML plot in the Streamlit app
-        if wine_plot == '2D':
-            components.v1.html(plot2d_html, width=512, height=512)
-        elif wine_plot == '3D': 
-            components.v1.html(plot3d_html, width=512, height=512)
+            # Load the HTML file
+            with open('./images/px_2d.html', 'r') as file:
+                plot2d_html = file.read()
+            # Load the HTML file
+            with open('./images/px_3d.html', 'r') as file:
+                plot3d_html = file.read()
+            # Display the HTML plot in the Streamlit app
+            if wine_plot == '2D':
+                components.v1.html(plot2d_html, width=512, height=512)
+            elif wine_plot == '3D': 
+                components.v1.html(plot3d_html, width=512, height=512)
 
-    with col1: 
+        with col1: 
 
-        # Select all wine types initially
-        st.header("Search for similar wines  🥂")
-        # Select wine type: default is all 
-        wine_types = df['Type'].unique()
-        selected_wine_types = st.multiselect("Select category 👇", wine_types, default=wine_types)
-        df = df[df['Type'].isin(selected_wine_types)]
-        subcol1, subcol2 = st.columns([0.5,0.5], gap="small")
-        with subcol1:
+            # Select all wine types initially
+            st.header("Search for similar wines  🥂")
+            # Select wine type: default is all 
+            wine_types = df['Type'].unique()
+            selected_wine_types = st.multiselect("Select category 👇", wine_types, default=wine_types)
+            df = df[df['Type'].isin(selected_wine_types)]
+            #subcol1, subcol2 = st.columns([0.5,0.5], gap="small")
+            #with subcol1:
             # Select wine variety: default is all 
             wine_vars = df['Variety'].unique()
             selected_wine_vars = st.multiselect("Narrow down the variety 🍇",['Select all'] + list(wine_vars),
@@ -175,8 +177,8 @@ if __name__ == "__main__":
                 df_search = df
             else:
                 df_search = df[df['Variety'].isin(selected_wine_vars)]
-        
-        with subcol2:
+            
+            #with subcol2:
             # Select the country: default is all 
             countries = df_search['Country'].unique()
             selected_countries = st.multiselect("Narrow down the country 🌎",['Select all'] + list(countries),
@@ -186,51 +188,55 @@ if __name__ == "__main__":
             else:
                 df_search = df_search[df_search['Country'].isin(selected_countries)]
 
-        # Add additional filters 
-        df_search = filter_df_search(df_search)
+            # Add additional filters 
+            df_search = filter_df_search(df_search)
 
-        # Create a search bar for the wine 'title'
-        selected_wine = st.selectbox("Search for and select a wine 👇", [''] + list(df_search["Title"].unique()))
+            # Create a search bar for the wine 'title'
+            selected_wine = st.selectbox("Search for and select a wine 👇", [''] + list(df_search["Title"].unique()))
+        
+            if selected_wine:
+                # Get the embedding for selected_wine
+                query_embedding = df.loc[df['Title']==selected_wine, 'embeddings'].iloc[0]
+
+                tasting_notes = df.loc[df['Title']==selected_wine, 'Tasting notes'].iloc[0]
+                st.write(f"Tasting notes: {tasting_notes}")
     
-        if selected_wine:
-            # Get the embedding for selected_wine
-            query_embedding = df.loc[df['Title']==selected_wine, 'embeddings'].iloc[0]
+                # CSS to inject contained in a string
+                hide_table_row_index = """
+                            <style>
+                            thead tr th:first-child {display:none}
+                            tbody th {display:none}
+                            </style>
+                            """
+                # Inject CSS with Markdown
+                st.markdown(hide_table_row_index, unsafe_allow_html=True)
+                # Display selected wine
+                st.header("Your selected wine 🍷")
+                selected_cols = ['Title','Country','Province','Region','Winery',
+                                'Variety','Tasting notes','Score']
+                st.table(df.loc[df['Title']==selected_wine, selected_cols].fillna(""))
+                # Slider for results to show 
+                k = st.slider(f"Choose how many similar wines to show 👇", 1, 10, value=4)
+                
+                # Filter recommendation results 
+                df_results = filter_df_recs(df)
 
-            tasting_notes = df.loc[df['Title']==selected_wine, 'Tasting notes'].iloc[0]
-            st.write(f"Tasting notes: {tasting_notes}")
+            else:
+                print("Awaiting selection")
 
-            # CSS to inject contained in a string
-            hide_table_row_index = """
-                        <style>
-                        thead tr th:first-child {display:none}
-                        tbody th {display:none}
-                        </style>
-                        """
-            # Inject CSS with Markdown
-            st.markdown(hide_table_row_index, unsafe_allow_html=True)
+    if selected_wine:   
+        # Display results as table 
+        if st.button("🔘 Press me to generate similar tasting wines"):
+            # Get neighbours
+            scores, samples = get_neighbours(df_results, query_embedding, 
+                                            k=k+1, metric='l2')
+            recs_df = pd.DataFrame(samples).fillna("")
+            recs_df = recs_df.fillna(" ")
+            # Display results
+            st.header(f"Top {k} similar tasting wines 🍾")
+            st.table(recs_df.loc[1:,selected_cols])
 
-            # Display selected wine
-            st.header("	🍷 Your selected wine")
-            selected_cols = ['Title','Country','Province','Region','Winery',
-                            'Variety','Tasting notes','Score']
-            st.table(df.loc[df['Title']==selected_wine, selected_cols].fillna(""))
+    else:
+        print("Awaiting selection")
 
-            # Slider for results to show 
-            k = st.slider(f"Choose how many similar wines to show 👇", 1, 10, value=4)
-            
-            # Filter recommendation results 
-            df_results = filter_df_recs(df)
-            
-            # Display results as table 
-            if st.button("🔘 Press me to generate similar tasting wines"):
-                # Get neighbours
-                scores, samples = get_neighbours(df_results, query_embedding, 
-                                                 k=k+1, metric='l2')
-                recs_df = pd.DataFrame(samples).fillna("")
-                recs_df = recs_df.fillna(" ")
-                # Display results
-                st.header(f"🍾 Top {k} similar tasting wines")
-                st.table(recs_df.loc[1:,selected_cols])
-            
-        else:
-            print("Awaiting selection")
+
